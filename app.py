@@ -17,6 +17,7 @@ from models import (
     run_arima_model,
     run_garch_model,
     run_ols_model,
+    get_rate_for_date,
 )
 from transactions import (
     append_transaction,
@@ -272,14 +273,10 @@ today = dt.now().date()
 is_future = tx_date > today
 is_past = tx_date < today
 
-# Get previous rate if available
+# Get rate for past dates from historical data
 previous_rate = None
-existing_tx = load_transactions()
-if not existing_tx.empty:
-    # Get the most recent transaction before this date
-    past_tx = existing_tx[existing_tx["date"].dt.date < tx_date]
-    if not past_tx.empty:
-        previous_rate = past_tx.iloc[-1]["rate"]
+if is_past:
+    previous_rate = get_rate_for_date(df, tx_date)
 
 preview_col1, preview_col2 = st.columns(2)
 
@@ -290,9 +287,9 @@ with preview_col1:
     elif is_past:
         if previous_rate:
             st.info(f"📅 **Past Date** ({(today - tx_date).days} days ago)")
-            st.metric("Using Previous Rate", f"₹{previous_rate:.4f}", delta=f"{((previous_rate - current_rate) / current_rate * 100):.2f}%")
+            st.metric("Using Historical Rate", f"₹{previous_rate:.4f}", delta=f"{((previous_rate - current_rate) / current_rate * 100):.2f}%")
         else:
-            st.info(f"📅 **Past Date** (no previous rate)")
+            st.info(f"📅 **Past Date** (no data for this date)")
             st.metric("Using Current Rate", f"₹{current_rate:.4f}")
     else:
         st.info(f"📅 **Today's** Transaction")
@@ -323,12 +320,11 @@ if log_button and amount_inr > 0:
         rate_to_use = predicted_rate
         rate_type = "PREDICTED"
     elif is_past:
-        # Get previous rate from transactions
-        existing_tx = load_transactions()
-        past_tx = existing_tx[existing_tx["date"].dt.date < tx_date]
-        if not past_tx.empty:
-            rate_to_use = past_tx.iloc[-1]["rate"]
-            rate_type = "PREVIOUS"
+        # Get historical rate from forex data
+        historical_rate = get_rate_for_date(df, tx_date)
+        if historical_rate:
+            rate_to_use = historical_rate
+            rate_type = "HISTORICAL"
         else:
             rate_to_use = current_rate
             rate_type = "CURRENT"
