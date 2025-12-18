@@ -19,16 +19,19 @@ st.markdown("**Track your forex savings and see how many coffees you can buy!**"
 nav_col1, nav_col2, nav_col3 = st.columns(3)
 
 with nav_col1:
-    if st.button("🏠 Home", use_container_width=True, key="nav_home"):
-        st.switch_page("app.py")
+    if st.button("🏠 Home", use_container_width=True):
+        st.session_state.page = "home"
+        st.rerun()
 
 with nav_col2:
-    if st.button("☕ Savings", use_container_width=True, key="nav_savings"):
+    if st.button("☕ Savings", use_container_width=True):
+        st.session_state.page = "savings"
         st.rerun()
 
 with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True, key="nav_rankings"):
-        st.switch_page("pages/02_Rankings.py")
+    if st.button("🏆 Rankings", use_container_width=True):
+        st.session_state.page = "rankings"
+        st.rerun()
 
 st.divider()
 
