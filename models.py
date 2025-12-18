@@ -199,7 +199,42 @@ def classify_risk_from_variance(variance):
         return "🔴 Very High", "Extreme volatility. Caution advised for large transfers.", avg_vol
 
 
-def generate_trading_advice(ols_direction, risk_level, current_rate, predicted_rate):
+def get_rate_for_date(df, target_date):
+    """
+    Get the exchange rate for a specific date from historical data
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Historical dataframe with Rate column and DatetimeIndex
+    target_date : datetime.date
+        Target date to get rate for
+    
+    Returns:
+    --------
+    float or None
+        Exchange rate for that date, or None if not found
+    """
+    try:
+        # Convert target_date to datetime if needed
+        if isinstance(target_date, str):
+            target_date = pd.to_datetime(target_date).date()
+        
+        # Find the rate for the exact date
+        matching_data = df[df.index.date == target_date]
+        
+        if not matching_data.empty:
+            return matching_data.iloc[0]["Rate"]
+        
+        # If exact date not found, get the most recent date before target
+        before_target = df[df.index.date < target_date]
+        if not before_target.empty:
+            return before_target.iloc[-1]["Rate"]
+        
+        return None
+    except Exception as e:
+        print(f"Error getting rate for date: {e}")
+        return None
     """
     Generate trading recommendation based on models
     
