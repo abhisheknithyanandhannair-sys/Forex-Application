@@ -1,5 +1,4 @@
 import warnings
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,7 +18,7 @@ from models import (
     run_garch_model,
     run_ols_model,
 )
-from transactions import append_transaction, load_transactions
+from transactions import append_transaction, load_transactions, clear_transactions, get_savings_stats
 
 warnings.filterwarnings("ignore")
 
@@ -236,6 +235,19 @@ if amount_input > 0:
 st.divider()
 st.subheader("💾 Log Transaction")
 st.caption("Track how many EUR you receive now vs. your last logged rate.")
+
+# Clear log button in expander
+with st.expander("🗑️ Transaction Management"):
+    col_clear, col_stats = st.columns(2)
+    with col_clear:
+        if st.button("Clear All Transactions", type="secondary", use_container_width=True):
+            clear_transactions()
+            st.success("✅ All transactions cleared!")
+            st.rerun()
+    with col_stats:
+        stats = get_savings_stats()
+        if stats["total_transactions"] > 0:
+            st.metric("Total Transactions", stats["total_transactions"])
 
 tx_col_amount, tx_col_date = st.columns(2)
 
