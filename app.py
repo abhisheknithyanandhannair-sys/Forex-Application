@@ -18,7 +18,12 @@ from models import (
     run_garch_model,
     run_ols_model,
 )
-from transactions import append_transaction, load_transactions, clear_transactions, get_savings_stats
+from transactions import (
+    append_transaction,
+    load_transactions,
+    clear_transactions,
+    get_savings_stats,
+)
 
 warnings.filterwarnings("ignore")
 
