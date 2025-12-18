@@ -266,23 +266,92 @@ with tx_col_amount:
 with tx_col_date:
     tx_date = st.date_input("Transaction date")
 
+# Show rate preview based on date
+from datetime import datetime as dt
+today = dt.now().date()
+is_future = tx_date > today
+is_past = tx_date < today
+
+# Get previous rate if available
+previous_rate = None
+existing_tx = load_transactions()
+if not existing_tx.empty:
+    # Get the most recent transaction before this date
+    past_tx = existing_tx[existing_tx["date"].dt.date < tx_date]
+    if not past_tx.empty:
+        previous_rate = past_tx.iloc[-1]["rate"]
+
+preview_col1, preview_col2 = st.columns(2)
+
+with preview_col1:
+    if is_future:
+        st.info(f"📅 **Future Date** (in {(tx_date - today).days} days)")
+        st.metric("Using Predicted Rate", f"₹{predicted_rate:.4f}", delta=f"{((predicted_rate - current_rate) / current_rate * 100):.2f}%")
+    elif is_past:
+        if previous_rate:
+            st.info(f"📅 **Past Date** ({(today - tx_date).days} days ago)")
+            st.metric("Using Previous Rate", f"₹{previous_rate:.4f}", delta=f"{((previous_rate - current_rate) / current_rate * 100):.2f}%")
+        else:
+            st.info(f"📅 **Past Date** (no previous rate)")
+            st.metric("Using Current Rate", f"₹{current_rate:.4f}")
+    else:
+        st.info(f"📅 **Today's** Transaction")
+        st.metric("Using Current Rate", f"₹{current_rate:.4f}")
+
+with preview_col2:
+    if amount_inr > 0:
+        if is_future:
+            rate_to_show = predicted_rate
+        elif is_past and previous_rate:
+            rate_to_show = previous_rate
+        else:
+            rate_to_show = current_rate
+        eur_preview = amount_inr / rate_to_show if rate_to_show > 0 else 0
+        st.metric("EUR You'll Get", f"€{eur_preview:.4f}")
+
 log_button = st.button("Log Transaction", type="primary", width='stretch')
 
 if log_button and amount_inr > 0:
-    tx_df, savings_eur = append_transaction(tx_date, amount_inr, current_rate)
-    eur_now = amount_inr / current_rate if current_rate > 0 else 0.0
+    # Check if transaction date is in the future or past
+    from datetime import datetime as dt
+    today = dt.now().date()
+    is_future = tx_date > today
+    is_past = tx_date < today
+    
+    # Determine which rate to use
+    if is_future:
+        rate_to_use = predicted_rate
+        rate_type = "PREDICTED"
+    elif is_past:
+        # Get previous rate from transactions
+        existing_tx = load_transactions()
+        past_tx = existing_tx[existing_tx["date"].dt.date < tx_date]
+        if not past_tx.empty:
+            rate_to_use = past_tx.iloc[-1]["rate"]
+            rate_type = "PREVIOUS"
+        else:
+            rate_to_use = current_rate
+            rate_type = "CURRENT"
+    else:
+        # Today's transaction
+        rate_to_use = current_rate
+        rate_type = "CURRENT"
+    
+    tx_df, savings_eur = append_transaction(tx_date, amount_inr, rate_to_use)
+    eur_now = amount_inr / rate_to_use if rate_to_use > 0 else 0.0
 
     if savings_eur is None:
         st.success(
             f"Logged first transaction: **₹{amount_inr:,.2f} ➝ {eur_now:,.4f} EUR** "
-            f"at rate **{current_rate:.4f} ₹/EUR**."
+            f"at **{rate_type}** rate **{rate_to_use:.4f} ₹/EUR**."
         )
     else:
         sign = "more" if savings_eur > 0 else "less"
         st.success(
             f"Logged transaction: **₹{amount_inr:,.2f} ➝ {eur_now:,.4f} EUR**.\n\n"
             f"Compared to your **previous logged rate**, you receive "
-            f"**{abs(savings_eur):.4f} EUR {sign}** for the same INR amount."
+            f"**{abs(savings_eur):.4f} EUR {sign}** for the same INR amount.\n\n"
+            f"*Rate used: **{rate_type}** ({rate_to_use:.4f})*"
         )
 
     with st.expander("View transaction history"):
