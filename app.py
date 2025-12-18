@@ -42,6 +42,25 @@ st.title("💱 EUR/INR Exchange Rate Prediction")
 st.caption("Real-time forex analysis with econometric models – tuned for mobile screens.")
 
 # ==========================================
+# NAVIGATION BUTTONS
+# ==========================================
+nav_col1, nav_col2, nav_col3 = st.columns(3)
+
+with nav_col1:
+    if st.button("🏠 Home", use_container_width=True, key="nav_home"):
+        st.rerun()
+
+with nav_col2:
+    if st.button("☕ Savings", use_container_width=True, key="nav_savings"):
+        st.switch_page("pages/01_Savings.py")
+
+with nav_col3:
+    if st.button("🏆 Rankings", use_container_width=True, key="nav_rankings"):
+        st.switch_page("pages/02_Rankings.py")
+
+st.divider()
+
+# ==========================================
 # HELPER FUNCTIONS (Visualization)
 # ==========================================
 
@@ -55,7 +74,7 @@ def create_visualization(df, forecast_days, ols_forecast, arima_forecast, curren
     ax1.plot(subset.index, subset, label="Historical (≈6 Months)", color="black", linewidth=2)
 
     last_date = df.index[-1]
-    if len(ols_forecast) > 0:
+    if ols_forecast and len(ols_forecast) > 0:
         num_f = len(ols_forecast)
         dates_f = build_forecast_dates(last_date, num_f)
         ax1.plot(dates_f, ols_forecast[: len(dates_f)], label="OLS Trend", linestyle="--", color="blue", alpha=0.7)
@@ -246,7 +265,7 @@ st.caption("Track how many EUR you receive now vs. your last logged rate.")
 with st.expander("🗑️ Transaction Management"):
     col_clear, col_stats = st.columns(2)
     with col_clear:
-        if st.button("Clear All Transactions", type="secondary", width='stretch'):
+        if st.button("Clear All Transactions", type="secondary", use_container_width=True):
             clear_transactions()
             st.success("✅ All transactions cleared!")
             st.rerun()
@@ -306,7 +325,7 @@ with preview_col2:
         eur_preview = amount_inr / rate_to_show if rate_to_show > 0 else 0
         st.metric("EUR You'll Get", f"€{eur_preview:.4f}")
 
-log_button = st.button("Log Transaction", type="primary", width='stretch')
+log_button = st.button("Log Transaction", type="primary", use_container_width=True)
 
 if log_button and amount_inr > 0:
     # Check if transaction date is in the future or past
@@ -351,7 +370,7 @@ if log_button and amount_inr > 0:
         )
 
     with st.expander("View transaction history"):
-        st.dataframe(tx_df.sort_values("date", ascending=False), width='stretch')
+        st.dataframe(tx_df.sort_values("date", ascending=False), use_container_width=True)
 
 st.divider()
 
@@ -415,7 +434,7 @@ st.divider()
 st.subheader("📉 Interactive Rate Chart (Last 6 Months)")
 hist_df = df[["Rate"]].iloc[-180:].reset_index().rename(columns={"index": "Date"})
 hist_df.rename(columns={hist_df.columns[0]: "Date"}, inplace=True)
-st.line_chart(hist_df, x="Date", y="Rate", width='stretch')
+st.line_chart(hist_df, x="Date", y="Rate", use_container_width=True)
 
 st.subheader("📊 Forecast & Trend (Detailed)")
 fig = create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate)
