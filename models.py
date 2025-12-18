@@ -79,26 +79,20 @@ def run_ols_model(rates, forecast_days):
     try:
         # Prepare data
         y = rates.values
-        X = np.arange(len(y))
+        X = np.arange(len(y)).reshape(-1, 1)
         
-        # Create lagged variable for trend
-        lag_1 = np.roll(y, 1)
-        lag_1[0] = y[0]
-        
-        # Fit OLS
-        X = sm.add_constant(np.column_stack([X, lag_1]))
-        model = sm.OLS(y, X).fit()
+        # Fit OLS with constant
+        X_with_const = sm.add_constant(X)
+        model = sm.OLS(y, X_with_const).fit()
         
         # Forecast
         last_x = len(y)
-        last_rate = y[-1]
         
         forecast = []
         for i in range(1, forecast_days + 1):
-            next_x = np.array([1, last_x + i, last_rate])
+            next_x = np.array([[1, last_x + i]])
             next_pred = model.predict(next_x)[0]
             forecast.append(next_pred)
-            last_rate = next_pred
         
         return model, np.array(forecast)
     except Exception as e:
@@ -212,7 +206,7 @@ def generate_trading_advice(ols_direction, risk_level, current_rate, predicted_r
     Parameters:
     -----------
     ols_direction : str
-        Trend direction (UP or DOWN)
+        Trend direction (UP or DOWN or NEUTRAL)
     risk_level : str
         Risk classification
     current_rate : float
@@ -225,17 +219,23 @@ def generate_trading_advice(ols_direction, risk_level, current_rate, predicted_r
     str
         Trading recommendation
     """
-    trend = "upward" if "UP" in ols_direction else "downward"
+    if predicted_rate is None or predicted_rate == 0:
+        predicted_rate = current_rate
+    
+    trend = "upward" if "UP" in ols_direction else ("downward" if "DOWN" in ols_direction else "neutral")
     change_pct = ((predicted_rate - current_rate) / current_rate) * 100 if current_rate > 0 else 0
     
     advice = f"**Trend:** {trend} | "
     
-    if change_pct > 0:
+    if change_pct > 0.5:
         advice += f"**EUR expected to strengthen by {change_pct:.2f}%** | "
         advice += "👉 If you're buying EUR, consider waiting a bit for a better rate. "
-    else:
+    elif change_pct < -0.5:
         advice += f"**EUR expected to weaken by {abs(change_pct):.2f}%** | "
         advice += "👉 If you're buying EUR, now might be a better time. "
+    else:
+        advice += f"**EUR relatively stable** | "
+        advice += "👉 Market conditions are stable for transactions. "
     
     if "Low" in risk_level:
         advice += "✓ Stable environment for transactions."
