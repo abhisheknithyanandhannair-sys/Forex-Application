@@ -295,8 +295,17 @@ st.divider()
 # ==========================================
 st.header("📊 Analysis Results")
 
-ols_direction = "UP ↗" if ols_model.params["Lag_1"] > 1 else "DOWN ↘"
-ols_strength = round(ols_model.rsquared * 100, 1)
+# Safe parameter access for OLS
+if ols_model is not None and hasattr(ols_model, 'params'):
+    try:
+        ols_direction = "UP ↗" if ols_model.params[1] > 1 else "DOWN ↘"
+        ols_strength = round(ols_model.rsquared * 100, 1)
+    except (KeyError, IndexError, TypeError):
+        ols_direction = "NEUTRAL ↔"
+        ols_strength = 0.0
+else:
+    ols_direction = "NEUTRAL ↔"
+    ols_strength = 0.0
 
 st.subheader("📈 OLS Trend & 🎯 ARIMA Forecast")
 
