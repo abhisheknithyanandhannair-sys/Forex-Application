@@ -47,19 +47,15 @@ st.caption("Real-time forex analysis with econometric models – tuned for mobil
 nav_col1, nav_col2, nav_col3 = st.columns(3)
 
 with nav_col1:
-    if st.button("🏠 Home", use_container_width=True):
-        st.session_state.page = "home"
-        st.rerun()
+    st.button("🏠 Home", use_container_width=True, disabled=True)
 
 with nav_col2:
-    if st.button("☕ Savings", use_container_width=True):
-        st.session_state.page = "savings"
-        st.rerun()
+    if st.button("☕ Savings", use_container_width=True, key="nav_to_savings"):
+        st.switch_page("pages/01_Savings.py")
 
 with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True):
-        st.session_state.page = "rankings"
-        st.rerun()
+    if st.button("🏆 Rankings", use_container_width=True, key="nav_to_rankings"):
+        st.switch_page("pages/02_Rankings.py")
 
 st.divider()
 
