@@ -125,7 +125,7 @@ styled_table = st.dataframe(
     display_rankings.style.format({
         "💶 EUR Saved": "{:.2f}",
     }).background_gradient(subset=["💶 EUR Saved"], cmap="RdYlGn"),
-    use_container_width=True
+    width='stretch'
 )
 
 st.divider()
@@ -182,7 +182,7 @@ with tab1:
     
     display_month = month_rankings[["Rank", "User", "EUR Saved", "Coffees"]].copy()
     display_month.columns = ["🏅 Rank", "👤 User", "💶 EUR Saved", "☕ Coffees"]
-    st.dataframe(display_month.style.format({"💶 EUR Saved": "{:.2f}"}), use_container_width=True)
+    st.dataframe(display_month.style.format({"💶 EUR Saved": "{:.2f}"}), width='stretch')
 
 with tab2:
     week_rankings = get_period_rankings(7)
@@ -204,7 +204,7 @@ with tab2:
     
     display_week = week_rankings[["Rank", "User", "EUR Saved", "Coffees"]].copy()
     display_week.columns = ["🏅 Rank", "👤 User", "💶 EUR Saved", "☕ Coffees"]
-    st.dataframe(display_week.style.format({"💶 EUR Saved": "{:.2f}"}), use_container_width=True)
+    st.dataframe(display_week.style.format({"💶 EUR Saved": "{:.2f}"}), width='stretch')
 
 with tab3:
     today_rankings = get_period_rankings(1)
@@ -226,7 +226,7 @@ with tab3:
     
     display_today = today_rankings[["Rank", "User", "EUR Saved", "Coffees"]].copy()
     display_today.columns = ["🏅 Rank", "👤 User", "💶 EUR Saved", "☕ Coffees"]
-    st.dataframe(display_today.style.format({"💶 EUR Saved": "{:.2f}"}), use_container_width=True)
+    st.dataframe(display_today.style.format({"💶 EUR Saved": "{:.2f}"}), width='stretch')
 
 st.divider()
 
