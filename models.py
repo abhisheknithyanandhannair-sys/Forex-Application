@@ -235,6 +235,9 @@ def get_rate_for_date(df, target_date):
     except Exception as e:
         print(f"Error getting rate for date: {e}")
         return None
+
+
+def generate_trading_advice(ols_direction, risk_level, current_rate, predicted_rate):
     """
     Generate trading recommendation based on models
     
