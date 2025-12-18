@@ -47,16 +47,19 @@ st.caption("Real-time forex analysis with econometric models – tuned for mobil
 nav_col1, nav_col2, nav_col3 = st.columns(3)
 
 with nav_col1:
-    if st.button("🏠 Home", use_container_width=True, key="nav_home"):
+    if st.button("🏠 Home", use_container_width=True):
+        st.session_state.page = "home"
         st.rerun()
 
 with nav_col2:
-    if st.button("☕ Savings", use_container_width=True, key="nav_savings"):
-        st.switch_page("pages/01_Savings.py")
+    if st.button("☕ Savings", use_container_width=True):
+        st.session_state.page = "savings"
+        st.rerun()
 
 with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True, key="nav_rankings"):
-        st.switch_page("pages/02_Rankings.py")
+    if st.button("🏆 Rankings", use_container_width=True):
+        st.session_state.page = "rankings"
+        st.rerun()
 
 st.divider()
 
@@ -74,12 +77,12 @@ def create_visualization(df, forecast_days, ols_forecast, arima_forecast, curren
     ax1.plot(subset.index, subset, label="Historical (≈6 Months)", color="black", linewidth=2)
 
     last_date = df.index[-1]
-    if ols_forecast and len(ols_forecast) > 0:
+    if ols_forecast is not None and isinstance(ols_forecast, (list, np.ndarray)) and len(ols_forecast) > 0:
         num_f = len(ols_forecast)
         dates_f = build_forecast_dates(last_date, num_f)
         ax1.plot(dates_f, ols_forecast[: len(dates_f)], label="OLS Trend", linestyle="--", color="blue", alpha=0.7)
     
-    if arima_forecast is not None and len(arima_forecast) > 0:
+    if arima_forecast is not None and hasattr(arima_forecast, '__len__') and len(arima_forecast) > 0:
         num_f = len(arima_forecast)
         dates_f = build_forecast_dates(last_date, num_f)
         ax1.plot(
