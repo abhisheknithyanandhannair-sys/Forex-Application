@@ -19,19 +19,15 @@ st.markdown("**Compare your forex savings with friends!**")
 nav_col1, nav_col2, nav_col3 = st.columns(3)
 
 with nav_col1:
-    if st.button("🏠 Home", use_container_width=True):
-        st.session_state.page = "home"
-        st.rerun()
+    if st.button("🏠 Home", use_container_width=True, key="nav_to_home_from_rankings"):
+        st.switch_page("app.py")
 
 with nav_col2:
-    if st.button("☕ Savings", use_container_width=True):
-        st.session_state.page = "savings"
-        st.rerun()
+    if st.button("☕ Savings", use_container_width=True, key="nav_to_savings_from_rankings"):
+        st.switch_page("pages/01_Savings.py")
 
 with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True):
-        st.session_state.page = "rankings"
-        st.rerun()
+    st.button("🏆 Rankings", use_container_width=True, disabled=True)
 
 st.divider()
 
