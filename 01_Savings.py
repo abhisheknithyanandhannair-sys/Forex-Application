@@ -1,171 +1,230 @@
 import streamlit as st
 import pandas as pd
-from transactions import load_transactions, get_savings_stats, COFFEE_PRICE_INR
+import numpy as np
+from datetime import datetime, timedelta
+from transactions import load_transactions, COFFEE_PRICE_INR
 
 st.set_page_config(
-    page_title="Savings in Coffees",
+    page_title="☕ Savings in Coffees",
     page_icon="☕",
     layout="wide"
 )
 
 st.title("☕ Your Savings in Coffees")
-st.markdown("**See how many coffees you can buy with your forex savings!**")
+st.markdown("**Track your forex savings and see how many coffees you can buy!**")
 
-# Get savings stats
-stats = get_savings_stats()
+# ==========================================
+# NAVIGATION BUTTONS
+# ==========================================
+nav_col1, nav_col2, nav_col3 = st.columns(3)
 
-if stats["total_transactions"] == 0:
-    st.warning("No transactions logged yet. Go to the main page and log a transaction first!")
-    st.stop()
+with nav_col1:
+    if st.button("🏠 Home", use_container_width=True, key="nav_home"):
+        st.switch_page("app.py")
 
-# Load data
+with nav_col2:
+    if st.button("☕ Savings", use_container_width=True, key="nav_savings"):
+        st.rerun()
+
+with nav_col3:
+    if st.button("🏆 Rankings", use_container_width=True, key="nav_rankings"):
+        st.switch_page("pages/02_Rankings.py")
+
+st.divider()
+
+# ==========================================
+# LOAD AND CALCULATE SAVINGS
+# ==========================================
 df = load_transactions()
 
-# Calculate savings in EUR
-first_rate = df["rate"].iloc[0]
-last_rate = df["rate"].iloc[-1]
-total_inr = df["amount_inr"].sum()
-total_eur_saved = (total_inr / first_rate) - (total_inr / last_rate)
+if df.empty:
+    st.warning("📝 No transactions logged yet. Go to the main page and log a transaction first!")
+    st.stop()
 
-# Calculate coffees
-coffees_total = int(total_eur_saved * 100 / COFFEE_PRICE_INR)  # Convert EUR to INR (approximate)
-coffees_today = stats["coffees_today"]
-coffees_week = stats["coffees_week"]
-coffees_month = stats["coffees_month"]
+# Get the base date (first transaction)
+base_date = df["date"].min()
+base_rate = df[df["date"] == base_date].iloc[0]["rate"]
 
-# Display savings overview
+st.info(f"**Base Date:** {base_date.date()} | **Base Rate:** ₹{base_rate:.4f}")
+
+# Calculate savings for each transaction
+df["eur_at_base"] = df["amount_inr"] / base_rate
+df["eur_at_actual"] = df["amount_inr"] / df["rate"]
+df["eur_saved"] = df["eur_at_base"] - df["eur_at_actual"]
+df["coffees_saved"] = (df["eur_saved"] * 100 / COFFEE_PRICE_INR).astype(int)
+
+# Total savings
+total_eur_saved = df["eur_saved"].sum()
+total_coffees = df["coffees_saved"].sum()
+total_amount_inr = df["amount_inr"].sum()
+
 st.divider()
-st.subheader("📊 Your Savings Overview")
 
+# Overview with animations
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.metric(
-        "Total Saved (EUR)",
-        f"€{max(0, total_eur_saved):.2f}",
+        "💶 Total EUR Saved",
+        f"€{max(0, total_eur_saved):.4f}",
         help="EUR saved from rate fluctuations"
     )
 
 with col2:
     st.metric(
-        "Total Transactions",
-        stats["total_transactions"],
-        help="Number of transactions logged"
+        "☕ Coffee Equivalents",
+        f"☕ {total_coffees}",
+        help=f"At ₹{COFFEE_PRICE_INR}/cup"
     )
 
 with col3:
+    st.metric(
+        "💰 Total INR Used",
+        f"₹{total_amount_inr:,.2f}",
+        help="Total amount exchanged"
+    )
+
+with col4:
     avg_rate = df["rate"].mean()
+    savings_pct = ((base_rate - avg_rate) / base_rate * 100)
     st.metric(
-        "Average Rate",
-        f"₹{avg_rate:.2f}",
-        delta=f"{((last_rate - avg_rate) / avg_rate * 100):.2f}%"
-    )
-
-with col4:
-    best_rate = df["rate"].min()
-    worst_rate = df["rate"].max()
-    st.metric(
-        "Rate Range",
-        f"₹{best_rate:.2f} - ₹{worst_rate:.2f}",
-        delta=f"{((worst_rate - best_rate) / best_rate * 100):.2f}%"
+        "📊 Rate Improvement",
+        f"{savings_pct:.2f}%",
+        help="Better rate than base date"
     )
 
 st.divider()
 
-# Coffee savings visualization
-st.subheader("☕ Coffee Equivalents")
-st.markdown(f"*At ₹{COFFEE_PRICE_INR} per coffee*")
+# Coffee Animation Section
+st.subheader("☕ Your Coffee Rewards!")
 
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    if coffees_today > 0:
-        st.success(f"**TODAY** ☕ {coffees_today}")
+# Create animated coffee display
+if total_coffees > 0:
+    # Coffee emoji animation
+    coffee_count = min(total_coffees, 20)  # Cap at 20 for display
+    coffee_emojis = " ".join(["☕"] * coffee_count)
+    if total_coffees > 20:
+        coffee_emojis += f" ... +{total_coffees - 20} more!"
+    
+    st.success(f"### {coffee_emojis}")
+    
+    # Progress bar
+    st.progress(min(total_coffees / 50, 1.0))
+    
+    # Fun messages based on coffee count
+    if total_coffees < 5:
+        msg = "☕ Every cup counts! Keep saving!"
+    elif total_coffees < 20:
+        msg = "🎉 Nice! You've earned some coffee treats!"
+    elif total_coffees < 50:
+        msg = "🚀 Impressive! You're a forex saving pro!"
     else:
-        st.info("**TODAY** ☕ 0")
-
-with col2:
-    if coffees_week > 0:
-        st.success(f"**THIS WEEK** ☕ {coffees_week}")
-    else:
-        st.info("**THIS WEEK** ☕ 0")
-
-with col3:
-    if coffees_month > 0:
-        st.success(f"**THIS MONTH** ☕ {coffees_month}")
-    else:
-        st.info("**THIS MONTH** ☕ 0")
-
-with col4:
-    if coffees_total > 0:
-        st.success(f"**TOTAL** ☕ {coffees_total}")
-    else:
-        st.info("**TOTAL** ☕ 0")
+        msg = "🏆 Wow! You could open a café!"
+    
+    st.success(msg)
+else:
+    st.info("📉 Rates aren't in your favor yet. Wait for better rates!")
 
 st.divider()
 
-# Detailed breakdown
-st.subheader("📈 Savings Breakdown")
+# Detailed breakdown by transaction
+st.subheader("📊 Transaction Breakdown")
 
-breakdown_col1, breakdown_col2 = st.columns(2)
+display_df = df[["date", "amount_inr", "rate", "eur_at_base", "eur_at_actual", "eur_saved", "coffees_saved"]].copy()
+display_df.columns = ["Date", "Amount (₹)", "Rate (₹/EUR)", "EUR (Base Rate)", "EUR (Actual)", "EUR Saved", "Coffees ☕"]
 
-with breakdown_col1:
-    st.markdown("### EUR Savings")
-    savings_data = {
-        "Period": ["Today", "This Week", "This Month", "Total"],
-        "EUR Saved": [
-            f"€{max(0, stats['today_savings']):.4f}",
-            f"€{max(0, stats['week_savings']):.4f}",
-            f"€{max(0, stats['month_savings']):.4f}",
-            f"€{max(0, total_eur_saved):.4f}"
-        ]
-    }
-    savings_df = pd.DataFrame(savings_data)
-    st.dataframe(savings_df, width='stretch')
-
-with breakdown_col2:
-    st.markdown("### Equivalent Coffees")
-    coffee_data = {
-        "Period": ["Today", "This Week", "This Month", "Total"],
-        "Coffees ☕": [
-            coffees_today,
-            coffees_week,
-            coffees_month,
-            coffees_total
-        ]
-    }
-    coffee_df = pd.DataFrame(coffee_data)
-    st.dataframe(coffee_df, width='stretch')
-
-st.divider()
-
-# Transaction history
-st.subheader("📋 Transaction History")
-
-# Add calculations to dataframe
-display_df = df.copy()
-display_df["EUR Equivalent"] = display_df["amount_inr"] / display_df["rate"]
-display_df["Coffees"] = (display_df["amount_inr"] / COFFEE_PRICE_INR).astype(int)
-display_df = display_df[["date", "amount_inr", "rate", "EUR Equivalent", "Coffees"]]
-display_df.columns = ["Date", "Amount (₹)", "Rate (₹/EUR)", "EUR Equivalent", "Coffees ☕"]
-
+# Format for display
 st.dataframe(
     display_df.sort_values("Date", ascending=False).style.format({
-        "Amount (₹)": "{:.2f}",
+        "Amount (₹)": "{:,.2f}",
         "Rate (₹/EUR)": "{:.4f}",
-        "EUR Equivalent": "{:.4f}"
-    }),
-    width='stretch'
+        "EUR (Base Rate)": "{:.4f}",
+        "EUR (Actual)": "{:.4f}",
+        "EUR Saved": "{:.4f}"
+    }).highlight_max(subset=["EUR Saved"], color='lightgreen').highlight_min(subset=["EUR Saved"], color='lightcoral'),
+    use_container_width=True
 )
 
 st.divider()
 
-# Info section
+# Savings timeline
+st.subheader("📈 Savings Growth Timeline")
+
+df_sorted = df.sort_values("date")
+df_sorted["cumulative_savings"] = df_sorted["eur_saved"].cumsum()
+df_sorted["cumulative_coffees"] = df_sorted["coffees_saved"].cumsum()
+
+# Create chart data
+chart_data = df_sorted[["date", "cumulative_savings", "cumulative_coffees"]].copy()
+chart_data.columns = ["Date", "EUR Saved", "Coffees ☕"]
+chart_data = chart_data.set_index("Date")
+
+st.line_chart(chart_data)
+
+st.divider()
+
+# Period-wise savings
+st.subheader("⏰ Savings by Period")
+
+today = datetime.now().date()
+today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+week_start = today_start - timedelta(days=today_start.weekday())
+month_start = today_start.replace(day=1)
+
+today_df = df[df["date"].dt.date == today]
+week_df = df[df["date"] >= week_start]
+month_df = df[df["date"] >= month_start]
+
+period_col1, period_col2, period_col3 = st.columns(3)
+
+with period_col1:
+    today_eur = today_df["eur_saved"].sum()
+    today_coffee = int(today_df["coffees_saved"].sum())
+    st.info(f"**Today**\n€{today_eur:.4f}\n☕ {today_coffee}")
+
+with period_col2:
+    week_eur = week_df["eur_saved"].sum()
+    week_coffee = int(week_df["coffees_saved"].sum())
+    st.info(f"**This Week**\n€{week_eur:.4f}\n☕ {week_coffee}")
+
+with period_col3:
+    month_eur = month_df["eur_saved"].sum()
+    month_coffee = int(month_df["coffees_saved"].sum())
+    st.info(f"**This Month**\n€{month_eur:.4f}\n☕ {month_coffee}")
+
+st.divider()
+
+# Statistics
+st.subheader("📊 Statistics")
+
+stat_col1, stat_col2, stat_col3 = st.columns(3)
+
+with stat_col1:
+    best_rate = df["rate"].min()
+    best_date = df[df["rate"] == best_rate]["date"].iloc[0]
+    st.metric("🎯 Best Rate", f"₹{best_rate:.4f}", f"on {best_date.date()}")
+
+with stat_col2:
+    worst_rate = df["rate"].max()
+    worst_date = df[df["rate"] == worst_rate]["date"].iloc[0]
+    st.metric("⚠️ Worst Rate", f"₹{worst_rate:.4f}", f"on {worst_date.date()}")
+
+with stat_col3:
+    avg_rate = df["rate"].mean()
+    st.metric("📈 Average Rate", f"₹{avg_rate:.4f}", help="Mean of all transactions")
+
+st.divider()
+
 st.info("""
 **💡 How Savings Are Calculated:**
 
-Your savings come from buying EUR at different rates. If you buy EUR when rates are high (bad for you) 
-vs. when rates are low (good for you), you've "saved" money by averaging a better rate.
+Your savings are calculated by comparing the EUR you'd get at your **base date rate** 
+vs. the EUR you actually got at the **transaction rate**.
 
-The "coffee equivalent" shows how much of your savings could be spent on coffee in India at ₹250/cup.
+**Formula:** EUR Saved = (Amount ₹ / Base Rate) - (Amount ₹ / Actual Rate)
+
+**Coffee Equivalent:** Your EUR savings in INR ÷ Coffee Price (₹250)
+
+The better your actual rates compared to the base rate, the more you save! ☕
 """)
+
