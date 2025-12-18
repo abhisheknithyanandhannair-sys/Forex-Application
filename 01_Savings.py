@@ -121,7 +121,7 @@ with breakdown_col1:
         ]
     }
     savings_df = pd.DataFrame(savings_data)
-    st.dataframe(savings_df, use_container_width=True)
+    st.dataframe(savings_df, width='stretch')
 
 with breakdown_col2:
     st.markdown("### Equivalent Coffees")
@@ -135,7 +135,7 @@ with breakdown_col2:
         ]
     }
     coffee_df = pd.DataFrame(coffee_data)
-    st.dataframe(coffee_df, use_container_width=True)
+    st.dataframe(coffee_df, width='stretch')
 
 st.divider()
 
@@ -155,7 +155,7 @@ st.dataframe(
         "Rate (₹/EUR)": "{:.4f}",
         "EUR Equivalent": "{:.4f}"
     }),
-    use_container_width=True
+    width='stretch'
 )
 
 st.divider()
