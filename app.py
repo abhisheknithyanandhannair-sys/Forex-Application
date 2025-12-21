@@ -1,4 +1,5 @@
 import warnings
+import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -7,16 +8,34 @@ import statsmodels.api as sm
 from statsmodels.tsa.arima.model import ARIMA
 from arch import arch_model
 import yfinance as yf
+from datetime import datetime as dt
+import os
+import base64
 
-# Assuming these exist in your local models.py
+# ==========================================
+# 1. PERFORMANCE CACHING (THE SPEED BOOST)
+# ==========================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cached_data(period):
+    """Fetches data and caches it so we don't download it every time."""
+    from models import fetch_fx_data
+    return fetch_fx_data(period=period)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cached_models(df_rate, forecast_days):
+    """Runs all heavy math models ONCE and saves the results."""
+    from models import run_ols_model, run_arima_model, run_garch_model
+    # Run all models
+    ols_model, ols_forecast = run_ols_model(df_rate, forecast_days)
+    arima_model, arima_forecast = run_arima_model(df_rate, forecast_days)
+    garch_model, garch_variance = run_garch_model(df_rate, forecast_days)
+    return ols_model, ols_forecast, arima_model, arima_forecast, garch_model, garch_variance
+
+# Load other lightweight functions
 from models import (
     build_forecast_dates,
     classify_risk_from_variance,
-    fetch_fx_data,
     generate_trading_advice,
-    run_arima_model,
-    run_garch_model,
-    run_ols_model,
     get_rate_for_date,
 )
 from transactions import (
@@ -32,427 +51,348 @@ warnings.filterwarnings("ignore")
 # PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="EUR/INR Forex Prediction",
-    page_icon="💱",
-    layout="centered",  # more comfortable on mobile
+    page_title="FilterFX - Precision Analytics",
+    page_icon="🪙",
+    layout="centered",
     initial_sidebar_state="expanded",
 )
 
-st.title("💱 EUR/INR Exchange Rate Prediction")
-st.caption("Real-time forex analysis with econometric models – tuned for mobile screens.")
-
 # ==========================================
-# NAVIGATION BUTTONS
+# 💎 LUXURY DARK THEME CSS
 # ==========================================
-nav_col1, nav_col2, nav_col3 = st.columns(3)
+st.markdown(
+    """
+    <style>
+    /* IMPORT FONTS */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@400;600&display=swap');
 
-with nav_col1:
-    st.button("🏠 Home", use_container_width=True, disabled=True)
-
-with nav_col2:
-    if st.button("☕ Savings", use_container_width=True, key="nav_to_savings"):
-        st.switch_page("pages/01_Savings.py")
-
-with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True, key="nav_to_rankings"):
-        st.switch_page("pages/02_Rankings.py")
-
-st.divider()
-
-# ==========================================
-# HELPER FUNCTIONS (Visualization)
-# ==========================================
-
-def create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate):
-    """Create professional visualization"""
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+    /* 1. BACKGROUND: Ivory Black / Deep Charcoal */
+    .stApp {
+        background-color: #121212; /* Deep Ivory Black */
+        background-image: linear-gradient(to bottom right, #121212, #1E1E1E);
+    }
     
-    # Plot 1: Forecasts
-    ax1 = axes[0]
-    subset = df["Rate"].iloc[-180:]
-    ax1.plot(subset.index, subset, label="Historical (≈6 Months)", color="black", linewidth=2)
+    /* 2. TEXT GLOBALS */
+    p, .stMarkdown, .stText, label, .stCaption, li {
+        color: #E0E0E0 !important; /* Silver/White */
+        font-family: 'Montserrat', sans-serif !important;
+    }
 
-    last_date = df.index[-1]
-    if ols_forecast is not None and isinstance(ols_forecast, (list, np.ndarray)) and len(ols_forecast) > 0:
-        num_f = len(ols_forecast)
-        dates_f = build_forecast_dates(last_date, num_f)
-        ax1.plot(dates_f, ols_forecast[: len(dates_f)], label="OLS Trend", linestyle="--", color="blue", alpha=0.7)
+    /* 3. SHINY GOLD HEADINGS */
+    h1, h2, h3, h4 {
+        font-family: 'Playfair Display', serif !important;
+        font-weight: 700 !important;
+        background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0px 0px 1px rgba(0,0,0,0.5);
+        margin-bottom: 0.5rem;
+    }
     
-    if arima_forecast is not None and hasattr(arima_forecast, '__len__') and len(arima_forecast) > 0:
-        num_f = len(arima_forecast)
-        dates_f = build_forecast_dates(last_date, num_f)
-        ax1.plot(
-            dates_f,
-            arima_forecast.values[: len(dates_f)],
-            label="ARIMA Forecast",
-            linestyle="-",
-            color="red",
-            linewidth=2.5,
+    /* 4. METRICS / CARDS */
+    div[data-testid="stMetric"] {
+        background-color: #1E1E1E; /* Dark Card */
+        border: 1px solid #B38728; /* Gold Border */
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #C0C0C0 !important; /* Silver Label */
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 600;
+    }
+    div[data-testid="stMetricValue"] {
+        /* Shiny Gold Number */
+        background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-family: 'Playfair Display', serif;
+    }
+    div[data-testid="stMetricDelta"] {
+         color: #E0E0E0 !important; /* Silver Delta */
+    }
+
+    /* 5. SIDEBAR */
+    section[data-testid="stSidebar"] {
+        background-color: #0E0E0E;
+        border-right: 1px solid #333;
+    }
+    
+    /* 6. BUTTONS */
+    .stButton>button {
+        background: linear-gradient(to bottom, #1E1E1E, #121212);
+        color: #B38728; /* Gold Text */
+        border: 1px solid #B38728;
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background: linear-gradient(45deg, #BF953F, #B38728);
+        color: #000000; /* Black Text on Gold Hover */
+        border-color: #FCF6BA;
+        box-shadow: 0 0 10px rgba(179, 135, 40, 0.5);
+    }
+    
+    /* 7. INPUT FIELDS */
+    .stTextInput>div>div>input, .stNumberInput>div>div>input, .stDateInput>div>div>input {
+        background-color: #1E1E1E;
+        color: #FCF6BA; /* Light Gold Text */
+        border: 1px solid #444;
+    }
+
+    /* 8. CUSTOM CONTAINERS (For Converter) */
+    .gold-card {
+        background-color: #1E1E1E;
+        border: 1px solid #B38728;
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ==========================================
+# LOGO HANDLING
+# ==========================================
+def get_logo_html(width=120):
+    """Returns HTML for logo, preferring local file 'logo.jpg'"""
+    if os.path.exists("logo.jpg"):
+        with open("logo.jpg", "rb") as f:
+            data = base64.b64encode(f.read()).decode("utf-8")
+        return f'<img src="data:image/jpg;base64,{data}" width="{width}" style="border-radius: 10px; border: 2px solid #B38728;">'
+    else:
+        # Fallback Gold/Black SVG
+        fallback = """
+        data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImdvbGRHcmFkIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojQkY5NTNGO3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I0ZDRjZCOTtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48dGV4dCB4PSIxMCIgeT0iNzAiIGZvbnQtZmFtaWx5PSJzZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNjAiIGZpbGw9InVybCgjZ29sZEdyYWQpIj5GaWx0ZXJGWDwvdGV4dD48L3N2Zz4=
+        """
+        return f'<img src="{fallback}" width="{width}">'
+
+# ==========================================
+# SPLASH SCREEN (LUXURY VERSION)
+# ==========================================
+if 'splash_shown' not in st.session_state:
+    st.session_state.splash_shown = False
+
+if not st.session_state.splash_shown:
+    splash = st.empty()
+    with splash.container():
+        logo_html = get_logo_html(width=250)
+        st.markdown(
+            f"""
+            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 70vh;'>
+                {logo_html}
+                <h1 style='font-size: 60px; margin-top: 20px;'>FilterFX</h1>
+                <p style='color: #C0C0C0; font-size: 18px; letter-spacing: 2px;'>PRECISION ECONOMETRICS</p>
+                <div style='margin-top: 20px; width: 50px; height: 2px; background: linear-gradient(90deg, transparent, #B38728, transparent);'></div>
+            </div>
+            """, 
+            unsafe_allow_html=True
         )
-
-    ax1.axhline(y=current_rate, color="green", linestyle=":", linewidth=2, label="Current Rate", alpha=0.7)
-    ax1.set_title("EUR/INR Exchange Rate Forecast", fontsize=14, fontweight="bold")
-    ax1.set_ylabel("Rate (₹ per EUR)")
-    ax1.legend(loc="best")
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot 2: Moving Averages
-    ax2 = axes[1]
-    df["MA_30"] = df["Rate"].rolling(window=30).mean()
-    df["MA_90"] = df["Rate"].rolling(window=90).mean()
-    subset2 = df.iloc[-250:]
-    
-    ax2.plot(subset2.index, subset2["Rate"], label="Daily Rate", color="black", alpha=0.4)
-    ax2.plot(subset2.index, subset2["MA_30"], label="30-Day MA", color="blue", linewidth=2)
-    ax2.plot(subset2.index, subset2["MA_90"], label="90-Day MA", color="red", linewidth=2)
-    ax2.set_title("Trend Analysis (Moving Averages)", fontsize=14, fontweight="bold")
-    ax2.set_xlabel("Date")
-    ax2.set_ylabel("Rate (₹ per EUR)")
-    ax2.legend(loc="best")
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return fig
-
+    time.sleep(2.5)
+    splash.empty()
+    st.session_state.splash_shown = True
 
 # ==========================================
-# SIDEBAR SETTINGS & ABOUT
+# SIDEBAR
 # ==========================================
-st.sidebar.header("⚙️ Settings")
-forecast_days = st.sidebar.slider("Forecast Period (Days)", 7, 90, 30)
-data_period = st.sidebar.selectbox("Historical Data Period", ["2y", "4y", "5y", "10y", "max"])
-
-# ==========================================
-# SIDEBAR - ABOUT SECTION
-# ==========================================
+st.sidebar.header("⚙️ Configuration")
+forecast_days = st.sidebar.slider("Forecast Horizon (Days)", 7, 90, 30)
+data_period = st.sidebar.selectbox("Data Lookback", ["2y", "4y", "5y", "10y", "max"])
 st.sidebar.divider()
-st.sidebar.header("ℹ️ About This App")
 st.sidebar.markdown("""
-This is a **EUR/INR Exchange Rate Prediction** tool powered by advanced econometric models:
-
-**📊 Features:**
-- **OLS Regression** - Identifies underlying trend direction
-- **ARIMA Model** - Forecasts future exchange rates
-- **GARCH Model** - Assesses market volatility & risk
-- **Smart Converter** - Real-time currency conversion
-- **Transaction Logger** - Track your exchange rates over time
-
-**💡 Use Cases:**
-- Monitor EUR/INR trends
-- Make informed trading decisions
-- Plan international transfers
-- Understand market volatility
-
-**📈 Data:**
-- Real-time forex data
-- EUR/INR rates (₹ per 1 EUR)
-- Updated daily
-
-**⚠️ Disclaimer:**
-For educational and analysis purposes. Not financial advice.
-""")
+<div style='text-align: center; color: #888;'>
+    <small>Powered by</small><br>
+    <strong style='color: #B38728;'>OLS • ARIMA • GARCH</strong>
+</div>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# MAIN APP: LOAD DATA
+# LOAD DATA (CACHED)
 # ==========================================
+with st.spinner("Accessing Market Data..."):
+    df = get_cached_data(data_period)
+    if df.empty:
+        st.error("Market data unavailable.")
+        st.stop()
+    
+    current_rate = df["Rate"].iloc[-1]
+    
+    # Run Models
+    ols_model, ols_forecast, arima_model, arima_forecast, garch_model, garch_variance = get_cached_models(df["Rate"], forecast_days)
 
-with st.spinner("📥 Loading EUR/INR data..."):
-    df = fetch_fx_data(period=data_period)
-
-if df.empty:
-    st.error("No data available. Please try a different period.")
-    st.stop()
-
-current_rate = df["Rate"].iloc[-1]
-
-# ==========================================
-# RUN MODELS EARLY 
-# (Moved up so we can use predictions in the converter)
-# ==========================================
-with st.spinner("🔄 Running econometric models for prediction..."):
-    ols_model, ols_forecast = run_ols_model(df["Rate"], forecast_days)
-    arima_model, arima_forecast = run_arima_model(df["Rate"], forecast_days)
-    garch_model, garch_variance = run_garch_model(df["Rate"], forecast_days)
-
-# Get the final predicted value for display
 predicted_rate = 0.0
 if arima_forecast is not None and len(arima_forecast) > 0:
     predicted_rate = arima_forecast.iloc[-1]
 
 # ==========================================
-# MARKET SNAPSHOT
+# HEADER
+# ==========================================
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    st.markdown(get_logo_html(width=100), unsafe_allow_html=True)
+with col_title:
+    st.title("FilterFX Dashboard")
+    st.markdown("<p style='font-style: italic; color: #888 !important; margin-top: -15px;'>Real-time Forex Intelligence</p>", unsafe_allow_html=True)
+
+# Navigation
+nav_action = st.radio("", ["🏠 Home", "☕ Savings", "🏆 Rankings"], horizontal=True, label_visibility="collapsed")
+if nav_action == "☕ Savings": st.switch_page("pages/01_Savings.py")
+elif nav_action == "🏆 Rankings": st.switch_page("pages/02_Rankings.py")
+
+# ==========================================
+# VISUALIZATION FUNCTION (DARK MODE)
+# ==========================================
+def create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate):
+    # Dark Theme for Matplotlib
+    plt.rcParams.update({
+        "axes.facecolor": "#1E1E1E",
+        "figure.facecolor": "#121212",
+        "text.color": "#E0E0E0",
+        "axes.labelcolor": "#C0C0C0",
+        "xtick.color": "#C0C0C0",
+        "ytick.color": "#C0C0C0",
+        "axes.edgecolor": "#444",
+        "grid.color": "#444",
+        "grid.alpha": 0.3
+    })
+    
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+    
+    # Plot 1: Forecast
+    ax1 = axes[0]
+    subset = df["Rate"].iloc[-180:]
+    ax1.plot(subset.index, subset, label="Historical", color="#C0C0C0", linewidth=1.5)
+    
+    last_date = df.index[-1]
+    if len(ols_forecast) > 0:
+        dates_f = build_forecast_dates(last_date, len(ols_forecast))
+        ax1.plot(dates_f, ols_forecast, label="OLS Trend", linestyle="--", color="#B38728", linewidth=2) # Gold
+    
+    if len(arima_forecast) > 0:
+        dates_f = build_forecast_dates(last_date, len(arima_forecast))
+        ax1.plot(dates_f, arima_forecast.values, label="ARIMA Forecast", color="#00FFCC", linewidth=2.5) # Neon Teal for contrast
+
+    ax1.set_title("EUR/INR Forecast", fontsize=14, fontweight="bold", color="#B38728")
+    legend = ax1.legend(loc="upper left", facecolor="#1E1E1E", edgecolor="#B38728")
+    for text in legend.get_texts(): text.set_color("#E0E0E0")
+    ax1.grid(True)
+    
+    # Plot 2: MA
+    ax2 = axes[1]
+    df["MA_30"] = df["Rate"].rolling(window=30).mean()
+    subset2 = df.iloc[-250:]
+    ax2.plot(subset2.index, subset2["Rate"], color="#555", alpha=0.5)
+    ax2.plot(subset2.index, subset2["MA_30"], label="30-Day MA", color="#B38728", linewidth=2)
+    
+    ax2.set_title("Trend Analysis (Moving Averages)", fontsize=14, fontweight="bold", color="#B38728")
+    legend2 = ax2.legend(loc="upper left", facecolor="#1E1E1E", edgecolor="#B38728")
+    for text in legend2.get_texts(): text.set_color("#E0E0E0")
+    ax2.grid(True)
+    
+    plt.tight_layout()
+    return fig
+
+# ==========================================
+# SNAPSHOT
 # ==========================================
 st.subheader("Market Snapshot")
+m1, m2 = st.columns(2)
+with m1: st.metric("📊 Current Rate", f"₹{current_rate:.4f}")
+with m2: 
+    chg = ((df["Rate"].iloc[-1] - df["Rate"].iloc[-2])/df["Rate"].iloc[-2])*100
+    st.metric("📈 Daily Change", f"{chg:.3f}%", delta=f"{chg:.3f}%")
 
-metric_col1, metric_col2 = st.columns(2)
-
-with metric_col1:
-    st.metric("📊 Current Rate (₹ / EUR)", f"{current_rate:.4f}")
-
-with metric_col2:
-    daily_change = ((df["Rate"].iloc[-1] - df["Rate"].iloc[-2]) / df["Rate"].iloc[-2]) * 100
-    st.metric("📈 Daily Change", f"{daily_change:.3f}%", delta=f"{daily_change:.3f}%")
-
-st.caption(f"Data points: **{len(df)}** (from {df.index[0].date()})")
-
-# ==========================================
-# 🆕 IMPROVED CURRENCY CONVERTER
-# ==========================================
 st.divider()
-st.subheader("🔄 Smart Currency Converter")
-
-# 1. Rate Dashboard (Current vs Predicted)
-rate_col1, rate_col2 = st.columns(2)
-
-with rate_col1:
-    st.container(border=True).markdown(
-        f"**Current Rate**\n### ₹{current_rate:.4f}"
-    )
-
-with rate_col2:
-    diff_val = predicted_rate - current_rate
-    diff_color = "green" if diff_val > 0 else "red"
-    direction_arrow = "↗" if diff_val > 0 else "↘"
-    
-    st.container(border=True).markdown(
-        f"**Predicted Rate (+{forecast_days}d)**\n"
-        f"### ₹{predicted_rate:.4f} :{diff_color}[{direction_arrow}]"
-    )
-
-# 2. Conversion Inputs
-st.markdown("##### Convert Amount")
-c_col1, c_col2 = st.columns([1, 2])
-
-with c_col1:
-    # Bi-directional selection
-    convert_direction = st.radio(
-        "Direction", 
-        ["EUR ➡ INR", "INR ➡ EUR"],
-        label_visibility="collapsed"
-    )
-
-with c_col2:
-    amount_input = st.number_input(
-        "Amount",
-        min_value=0.0,
-        step=100.0,
-        value=1000.0,
-        format="%.2f",
-        label_visibility="collapsed"
-    )
-
-# 3. Calculation & Display
-if amount_input > 0:
-    if convert_direction == "EUR ➡ INR":
-        # EUR to INR: Multiply
-        converted_val = amount_input * current_rate
-        st.success(f"💶 **{amount_input:,.2f} EUR** is approximately **₹ {converted_val:,.2f} INR**")
-    else:
-        # INR to EUR: Divide
-        converted_val = amount_input / current_rate
-        st.success(f"🇮🇳 **₹ {amount_input:,.2f} INR** is approximately **€ {converted_val:,.2f} EUR**")
-
 
 # ==========================================
-# TRANSACTION LOGGING
+# CONVERTER (GOLD CARD STYLE)
+# ==========================================
+st.subheader("🔄 Smart Converter")
+
+rc1, rc2 = st.columns(2)
+with rc1:
+    st.markdown(f"""
+    <div class="gold-card">
+        <div style="color: #C0C0C0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Current Rate</div>
+        <div style="font-family: 'Playfair Display'; font-size: 32px; font-weight: bold; background: linear-gradient(45deg, #BF953F, #FCF6BA); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            ₹{current_rate:.4f}
+        </div>
+    </div>""", unsafe_allow_html=True)
+with rc2:
+    diff = predicted_rate - current_rate
+    arrow = "↗" if diff > 0 else "↘"
+    col = "#00FFCC" if diff > 0 else "#FF4444"
+    st.markdown(f"""
+    <div class="gold-card">
+        <div style="color: #C0C0C0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Forecast (+{forecast_days}d)</div>
+        <div style="font-family: 'Playfair Display'; font-size: 32px; font-weight: bold; background: linear-gradient(45deg, #BF953F, #FCF6BA); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            ₹{predicted_rate:.4f} <span style='color:{col}; font-size:0.6em;'>{arrow}</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+cc1, cc2 = st.columns([1,2])
+with cc1: d = st.radio("Direction", ["EUR ➡ INR", "INR ➡ EUR"], label_visibility="collapsed")
+with cc2: amt = st.number_input("Amount", value=1000.0, step=100.0, label_visibility="collapsed")
+
+if amt > 0:
+    val = amt * current_rate if d == "EUR ➡ INR" else amt / current_rate
+    sym_in, sym_out = ("€", "₹") if d == "EUR ➡ INR" else ("₹", "€")
+    st.success(f"**{sym_in} {amt:,.2f}** = **{sym_out} {val:,.2f}**")
+
+# ==========================================
+# LOGGING
 # ==========================================
 st.divider()
 st.subheader("💾 Log Transaction")
-st.caption("Track how many EUR you receive now vs. your last logged rate.")
+with st.expander("🗑️ Transaction History"):
+    if st.button("Clear Log", use_container_width=True):
+        clear_transactions()
+        st.rerun()
 
-# Clear log button in expander
-with st.expander("🗑️ Transaction Management"):
-    col_clear, col_stats = st.columns(2)
-    with col_clear:
-        if st.button("Clear All Transactions", type="secondary", use_container_width=True):
-            clear_transactions()
-            st.success("✅ All transactions cleared!")
-            st.rerun()
-    with col_stats:
-        stats = get_savings_stats()
-        if stats["total_transactions"] > 0:
-            st.metric("Total Transactions", stats["total_transactions"])
+tc1, tc2 = st.columns(2)
+with tc1: t_amt = st.number_input("Amount (INR)", min_value=0.0, step=1000.0)
+with tc2: t_date = st.date_input("Date")
 
-tx_col_amount, tx_col_date = st.columns(2)
-
-with tx_col_amount:
-    amount_inr = st.number_input(
-        "Amount in INR",
-        min_value=0.0,
-        step=1000.0,
-        format="%.2f",
-    )
-with tx_col_date:
-    tx_date = st.date_input("Transaction date")
-
-# Show rate preview based on date
-from datetime import datetime as dt
-today = dt.now().date()
-is_future = tx_date > today
-is_past = tx_date < today
-
-# Get rate for past dates from historical data
-previous_rate = None
-if is_past:
-    previous_rate = get_rate_for_date(df, tx_date)
-
-preview_col1, preview_col2 = st.columns(2)
-
-with preview_col1:
-    if is_future:
-        st.info(f"📅 **Future Date** (in {(tx_date - today).days} days)")
-        st.metric("Using Predicted Rate", f"₹{predicted_rate:.4f}", delta=f"{((predicted_rate - current_rate) / current_rate * 100):.2f}%")
-    elif is_past:
-        if previous_rate:
-            st.info(f"📅 **Past Date** ({(today - tx_date).days} days ago)")
-            st.metric("Using Historical Rate", f"₹{previous_rate:.4f}", delta=f"{((previous_rate - current_rate) / current_rate * 100):.2f}%")
-        else:
-            st.info(f"📅 **Past Date** (no data for this date)")
-            st.metric("Using Current Rate", f"₹{current_rate:.4f}")
-    else:
-        st.info(f"📅 **Today's** Transaction")
-        st.metric("Using Current Rate", f"₹{current_rate:.4f}")
-
-with preview_col2:
-    if amount_inr > 0:
-        if is_future:
-            rate_to_show = predicted_rate
-        elif is_past and previous_rate:
-            rate_to_show = previous_rate
-        else:
-            rate_to_show = current_rate
-        eur_preview = amount_inr / rate_to_show if rate_to_show > 0 else 0
-        st.metric("EUR You'll Get", f"€{eur_preview:.4f}")
-
-log_button = st.button("Log Transaction", type="primary", use_container_width=True)
-
-if log_button and amount_inr > 0:
-    # Check if transaction date is in the future or past
-    from datetime import datetime as dt
+if st.button("Confirm Log Entry", type="primary", use_container_width=True) and t_amt > 0:
     today = dt.now().date()
-    is_future = tx_date > today
-    is_past = tx_date < today
-    
-    # Determine which rate to use
-    if is_future:
-        rate_to_use = predicted_rate
-        rate_type = "PREDICTED"
-    elif is_past:
-        # Get historical rate from forex data
-        historical_rate = get_rate_for_date(df, tx_date)
-        if historical_rate:
-            rate_to_use = historical_rate
-            rate_type = "HISTORICAL"
-        else:
-            rate_to_use = current_rate
-            rate_type = "CURRENT"
-    else:
-        # Today's transaction
-        rate_to_use = current_rate
-        rate_type = "CURRENT"
-    
-    tx_df, savings_eur = append_transaction(tx_date, amount_inr, rate_to_use)
-    eur_now = amount_inr / rate_to_use if rate_to_use > 0 else 0.0
-
-    if savings_eur is None:
-        st.success(
-            f"Logged first transaction: **₹{amount_inr:,.2f} ➝ {eur_now:,.4f} EUR** "
-            f"at **{rate_type}** rate **{rate_to_use:.4f} ₹/EUR**."
-        )
-    else:
-        sign = "more" if savings_eur > 0 else "less"
-        st.success(
-            f"Logged transaction: **₹{amount_inr:,.2f} ➝ {eur_now:,.4f} EUR**.\n\n"
-            f"Compared to your **previous logged rate**, you receive "
-            f"**{abs(savings_eur):.4f} EUR {sign}** for the same INR amount.\n\n"
-            f"*Rate used: **{rate_type}** ({rate_to_use:.4f})*"
-        )
-
-    with st.expander("View transaction history"):
-        st.dataframe(tx_df.sort_values("date", ascending=False), use_container_width=True)
-
-st.divider()
+    r_use = predicted_rate if t_date > today else (get_rate_for_date(df, t_date) or current_rate)
+    append_transaction(t_date, t_amt, r_use)
+    st.success(f"Logged successfully @ {r_use:.4f}")
 
 # ==========================================
-# ANALYSIS RESULTS (Models already ran above)
+# RESULTS SECTION
 # ==========================================
-st.header("📊 Analysis Results")
+st.divider()
+st.header("📊 Model Analysis")
 
-# Safe parameter access for OLS
-if ols_model is not None and hasattr(ols_model, 'params'):
-    try:
-        ols_direction = "UP ↗" if ols_model.params[1] > 1 else "DOWN ↘"
-        ols_strength = round(ols_model.rsquared * 100, 1)
-    except (KeyError, IndexError, TypeError):
-        ols_direction = "NEUTRAL ↔"
-        ols_strength = 0.0
-else:
-    ols_direction = "NEUTRAL ↔"
-    ols_strength = 0.0
+if hasattr(ols_model, 'params'):
+    odir = "UP ↗" if ols_model.params[1] > 0 else "DOWN ↘"
+    ostr = f"{ols_model.rsquared*100:.1f}%"
+else: odir, ostr = "NEUTRAL ↔", "0%"
 
-st.subheader("📈 OLS Trend & 🎯 ARIMA Forecast")
+ac1, ac2 = st.columns(2)
+with ac1: st.markdown(f"**OLS Trend:** {odir} <span style='color:#888'>(Conf: {ostr})</span>", unsafe_allow_html=True)
+with ac2: 
+    pchg = ((predicted_rate-current_rate)/current_rate)*100
+    st.metric(f"Forecast ({forecast_days}D)", f"₹{predicted_rate:.4f}", delta=f"{pchg:.2f}%")
 
-ols_col, arima_col = st.columns(2)
-
-with ols_col:
-    st.markdown(f"**Direction:** {ols_direction}")
-    st.markdown(f"**Confidence:** {ols_strength}%")
-    with st.expander("View OLS Model Summary"):
-        st.write(ols_model.summary())
-
-with arima_col:
-    if arima_forecast is not None and len(arima_forecast) > 0:
-        change_pct = ((predicted_rate - current_rate) / current_rate) * 100
-        st.metric(f"Predicted Rate ({forecast_days}D)", f"₹{predicted_rate:.4f}", delta=f"{change_pct:.3f}%")
-        with st.expander("View ARIMA Model Summary"):
-            st.write(arima_model.summary())
+# GARCH Risk
+st.subheader("⚠️ Volatility Radar")
+rlab, rdesc, avol = classify_risk_from_variance(garch_variance)
+st.markdown(f"""
+<div style="background-color: #1E1E1E; border-left: 4px solid #B38728; padding: 15px; border-radius: 4px;">
+    <strong style="color: #FCF6BA; font-size: 1.1em;">Risk Level: {rlab}</strong> 
+    <span style="color: #888;">(Vol Index: {avol:.2f})</span><br>
+    <em style="color: #C0C0C0;">{rdesc}</em>
+</div>""", unsafe_allow_html=True)
 
 st.divider()
-
-# GARCH Volatility
-st.subheader("⚠️ Risk Assessment (GARCH Volatility)")
-
-risk_label, risk_desc, avg_vol = classify_risk_from_variance(garch_variance)
-st.info(f"**Volatility Index:** {avg_vol:.2f}\n**Risk Level:** {risk_label}\n{risk_desc}")
-
-st.divider()
-
-# Trading Advice
-st.subheader("💡 Trading Recommendation")
-advice = generate_trading_advice(
-    ols_direction,
-    risk_label,
-    current_rate,
-    predicted_rate,
-)
-st.warning(advice)
-
-st.divider()
-
-# Visualization
-st.subheader("📉 Interactive Rate Chart (Last 6 Months)")
-hist_df = df[["Rate"]].iloc[-180:].reset_index().rename(columns={"index": "Date"})
-hist_df.rename(columns={hist_df.columns[0]: "Date"}, inplace=True)
-st.line_chart(hist_df, x="Date", y="Rate", use_container_width=True)
-
-st.subheader("📊 Forecast & Trend (Detailed)")
-fig = create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate)
-st.pyplot(fig)
-
-st.divider()
-
-# Historical Data Table
-st.subheader("📋 Historical Data (Last 20 Days)")
-st.dataframe(df[['Rate']].tail(20).style.format({"Rate": "{:.6f}"}))
-
-# Footer
-st.divider()
-st.markdown("""
----
-**About This App:**
-- Uses **OLS** for trend analysis
-- Uses **ARIMA(5,1,0)** for price forecasting
-- Uses **GARCH(1,1)** for volatility assessment
-- Data: EUR/INR exchange rates (₹ per 1 EUR)
-- Developed for financial analysis and educational purposes
-""")
+st.subheader("📉 Technical Chart")
+st.pyplot(create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate))
+st.caption("FilterFX • Precision Econometrics")
