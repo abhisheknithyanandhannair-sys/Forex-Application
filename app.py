@@ -9,26 +9,33 @@ from statsmodels.tsa.arima.model import ARIMA
 from arch import arch_model
 import yfinance as yf
 from datetime import datetime as dt
+import os
 import base64
 
 # ==========================================
-# EMBEDDED LOGO (Base64) - NO FILE NEEDED
+# 1. PERFORMANCE CACHING (THE SPEED BOOST)
 # ==========================================
-# This is a placeholder SVG logo encoded in base64. 
-# If you have your own image, convert it to base64 and replace the string below.
-logo_base64 = """
-data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMTAwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZEdyYWQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRDRBRjM3O3N0b3Atb3BhY2l0eToxIiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiNCOEM0MjU7c3RvcC1vcGFjaXR5OjEiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGZpbHRlciBpZD0iYmxhY2tPdXRsaW5lIj4KICAgICAgPGZlTW9ycGhvbG9neSBpbj0iU291cmNlQWxwaGEiIHJlc3VWx0PSJkaWxhdGVkIiBvcGVyYXRvcj0iZGlsYXRlIiByYWRpdXM9IjEiLz4KICAgICAgPGZlRmxvb2QgZmxvb2QtY29sb3I9IiMwMDAwMDAiIHJlc3VsdD0iYmxhY2siLz4KICAgICAgPGZlQ29tcG9zaXRlIGluPSJibGFjayIgaW4yPSJkaWxhdGVkIiBvcGVyYXRvcj0iaW4iIHJlc3VsdD0ib3V0bGluZSIvPgogICAgICA8ZmVNZXJnZT4KICAgICAgICA8ZmVNZXJnZU5vZGUgaW49Im91dGxpbmUiLz4KICAgICAgICA8ZmVNZXJnZU5vZGUgaW49IlNvdXJjZUdyYXBoaWMiLz4KICAgICAgPC9mZU1lcmdlPgogICAgPC9maWx0ZXI+CiAgPC9kZWZzPgogIDx0ZXh0IHg9IjEwIiB5PSI3MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iYm9sZCIgZm9udC1zaXplPSI2MCIgZmlsbD0idXJsKCNnb2xkR3JhZCkiIGZpbHRlcj0idXJsKCNibGFja091dGxpbmUpIj5GaWx0ZXJGWDwvdGV4dD4KICA8cG9seWxpbmUgcG9pbnRzPSIxNzAgODAgMjEwIDQwIDI1MCA3MCAyOTAgMjAiIHN0cm9rZT0idXJsKCNnb2xkR3JhZCkiIHN0cm9rZS13aWR0aD0iNSIgZmlsbD0ibm9uZSIgZmlsdGVyPSJ1cmwoI2JsYWNrT3V0bGluZSkiLz4KICA8cG9seWdvbiBwb2ludHM9IjI5MCAyMCAyNzAgMzAgMjkwIDQwIiBmaWxsPSJ1cmwoI2dvbGRHcmFkKSIgZmlsdGVyPSJ1cmwoI2JsYWNrT3V0bGluZSkiLz4KPC9zdmc+
-"""
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cached_data(period):
+    """Fetches data and caches it so we don't download it every time."""
+    from models import fetch_fx_data
+    return fetch_fx_data(period=period)
 
-# Assuming these exist in your local models.py
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cached_models(df_rate, forecast_days):
+    """Runs all heavy math models ONCE and saves the results."""
+    from models import run_ols_model, run_arima_model, run_garch_model
+    # Run all models
+    ols_model, ols_forecast = run_ols_model(df_rate, forecast_days)
+    arima_model, arima_forecast = run_arima_model(df_rate, forecast_days)
+    garch_model, garch_variance = run_garch_model(df_rate, forecast_days)
+    return ols_model, ols_forecast, arima_model, arima_forecast, garch_model, garch_variance
+
+# Load other lightweight functions
 from models import (
     build_forecast_dates,
     classify_risk_from_variance,
-    fetch_fx_data,
     generate_trading_advice,
-    run_arima_model,
-    run_garch_model,
-    run_ols_model,
     get_rate_for_date,
 )
 from transactions import (
@@ -44,88 +51,105 @@ warnings.filterwarnings("ignore")
 # PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="FilterFX - Forex Prediction",
-    page_icon="💱",
+    page_title="FilterFX - Precision Analytics",
+    page_icon="🪙",
     layout="centered",
     initial_sidebar_state="expanded",
 )
 
 # ==========================================
-# CUSTOM STYLING (Gold+Outline, Ivory, Black, White)
+# 💎 LUXURY DARK THEME CSS
 # ==========================================
 st.markdown(
     """
     <style>
-    /* 1. Main Background - White */
+    /* IMPORT FONTS */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@400;600&display=swap');
+
+    /* 1. BACKGROUND: Ivory Black / Deep Charcoal */
     .stApp {
-        background-color: #FFFFFF;
-        color: #000000;
+        background-color: #121212; /* Deep Ivory Black */
+        background-image: linear-gradient(to bottom right, #121212, #1E1E1E);
     }
     
-    /* 2. Standard Text Colors - Black */
-    p, .stMarkdown, .stText, label, .stCaption {
-        color: #000000 !important;
+    /* 2. TEXT GLOBALS */
+    p, .stMarkdown, .stText, label, .stCaption, li {
+        color: #E0E0E0 !important; /* Silver/White */
+        font-family: 'Montserrat', sans-serif !important;
     }
 
-    /* 3. Headings & Bold - Gold with Black Outline for visibility */
-    h1, h2, h3, h4, strong {
-        color: #D4AF37 !important; /* Metallic Gold */
-        font-weight: 800 !important;
-        /* This adds the black border around the gold text */
-        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
-        letter-spacing: 0.5px;
+    /* 3. SHINY GOLD HEADINGS */
+    h1, h2, h3, h4 {
+        font-family: 'Playfair Display', serif !important;
+        font-weight: 700 !important;
+        background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0px 0px 1px rgba(0,0,0,0.5);
+        margin-bottom: 0.5rem;
     }
     
-    /* 4. Metrics - Ivory Background, Black Label, Gold+Outline Value */
+    /* 4. METRICS / CARDS */
     div[data-testid="stMetric"] {
-        background-color: #FFFFF0; /* Ivory */
-        border: 2px solid #D4AF37; /* Gold Border */
-        padding: 10px;
-        border-radius: 8px;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        background-color: #1E1E1E; /* Dark Card */
+        border: 1px solid #B38728; /* Gold Border */
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     div[data-testid="stMetricLabel"] {
-        color: #000000 !important; /* Black label for readability */
-        font-weight: 700;
+        color: #C0C0C0 !important; /* Silver Label */
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 600;
     }
     div[data-testid="stMetricValue"] {
-        color: #D4AF37 !important; /* Gold Value */
-        /* Black outline for the big numbers */
-        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        /* Shiny Gold Number */
+        background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-family: 'Playfair Display', serif;
     }
     div[data-testid="stMetricDelta"] {
-         color: #000000 !important; /* Keep delta readable */
-         font-weight: bold;
+         color: #E0E0E0 !important; /* Silver Delta */
     }
 
-    /* 5. Sidebar styling */
+    /* 5. SIDEBAR */
     section[data-testid="stSidebar"] {
-        background-color: #F8F9FA;
-        border-right: 2px solid #D4AF37;
+        background-color: #0E0E0E;
+        border-right: 1px solid #333;
     }
     
-    /* 6. Buttons - Ivory/Gold theme */
+    /* 6. BUTTONS */
     .stButton>button {
-        color: #000000;
-        background-color: #FFFFF0; /* Ivory */
-        border: 2px solid #D4AF37; /* Gold */
-        font-weight: bold;
+        background: linear-gradient(to bottom, #1E1E1E, #121212);
+        color: #B38728; /* Gold Text */
+        border: 1px solid #B38728;
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 600;
+        transition: all 0.3s ease;
     }
     .stButton>button:hover {
-        background-color: #D4AF37;
-        color: #FFFFFF;
-        border-color: #000000;
+        background: linear-gradient(45deg, #BF953F, #B38728);
+        color: #000000; /* Black Text on Gold Hover */
+        border-color: #FCF6BA;
+        box-shadow: 0 0 10px rgba(179, 135, 40, 0.5);
     }
     
-    /* 7. Containers/Expanders */
-    .stExpander, [data-testid="stForm"] {
-         border: 1px solid #D4AF37;
-         background-color: #FFFFF0;
+    /* 7. INPUT FIELDS */
+    .stTextInput>div>div>input, .stNumberInput>div>div>input, .stDateInput>div>div>input {
+        background-color: #1E1E1E;
+        color: #FCF6BA; /* Light Gold Text */
+        border: 1px solid #444;
     }
 
-    /* Prevent content from hiding behind navbar */
-    .block-container {
-        padding-bottom: 5rem;
+    /* 8. CUSTOM CONTAINERS (For Converter) */
+    .gold-card {
+        background-color: #1E1E1E;
+        border: 1px solid #B38728;
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
     </style>
     """,
@@ -133,312 +157,242 @@ st.markdown(
 )
 
 # ==========================================
-# SPLASH SCREEN LOGIC
+# LOGO HANDLING
+# ==========================================
+def get_logo_html(width=120):
+    """Returns HTML for logo, preferring local file 'logo.jpg'"""
+    if os.path.exists("logo.jpg"):
+        with open("logo.jpg", "rb") as f:
+            data = base64.b64encode(f.read()).decode("utf-8")
+        return f'<img src="data:image/jpg;base64,{data}" width="{width}" style="border-radius: 10px; border: 2px solid #B38728;">'
+    else:
+        # Fallback Gold/Black SVG
+        fallback = """
+        data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImdvbGRHcmFkIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojQkY5NTNGO3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I0ZDRjZCOTtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48dGV4dCB4PSIxMCIgeT0iNzAiIGZvbnQtZmFtaWx5PSJzZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNjAiIGZpbGw9InVybCgjZ29sZEdyYWQpIj5GaWx0ZXJGWDwvdGV4dD48L3N2Zz4=
+        """
+        return f'<img src="{fallback}" width="{width}">'
+
+# ==========================================
+# SPLASH SCREEN (LUXURY VERSION)
 # ==========================================
 if 'splash_shown' not in st.session_state:
     st.session_state.splash_shown = False
 
 if not st.session_state.splash_shown:
-    # Create an empty container for the splash screen
     splash = st.empty()
-    
     with splash.container():
-        # Centered Logo and Text for Splash using HTML for embedded image
+        logo_html = get_logo_html(width=250)
         st.markdown(
             f"""
-            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh;'>
-                <img src="{logo_base64}" width="300" style="margin-bottom: 20px;">
-                <h1 style='color: #D4AF37; font-size: 60px; text-shadow: 2px 2px 0 #000;'>FilterFX</h1>
-                <p style='color: #000000; font-size: 24px; font-weight: bold;'>Precision Forex Analytics</p>
+            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 70vh;'>
+                {logo_html}
+                <h1 style='font-size: 60px; margin-top: 20px;'>FilterFX</h1>
+                <p style='color: #C0C0C0; font-size: 18px; letter-spacing: 2px;'>PRECISION ECONOMETRICS</p>
+                <div style='margin-top: 20px; width: 50px; height: 2px; background: linear-gradient(90deg, transparent, #B38728, transparent);'></div>
             </div>
             """, 
             unsafe_allow_html=True
         )
-    
-    # Wait for 3 seconds
-    time.sleep(3)
-    
-    # Clear the splash screen
+    time.sleep(2.5)
     splash.empty()
-    
-    # Set state so it doesn't show again this session
     st.session_state.splash_shown = True
 
 # ==========================================
-# MAIN DASHBOARD CONTENT
+# SIDEBAR
 # ==========================================
-
-# 1. Logo and Title on Main Page
-col_logo, col_title = st.columns([1, 4])
-with col_logo:
-    # Use HTML to embed base64 image
-    st.markdown(f'<img src="{logo_base64}" width="120">', unsafe_allow_html=True)
-with col_title:
-    st.title("FilterFX Dashboard")
-
-st.caption("Real-time forex analysis with econometric models.")
-
-# Bottom Navigation
-nav_action = st.radio(
-    "",
-    ["🏠 Home", "☕ Savings", "🏆 Rankings"],
-    horizontal=True,
-    label_visibility="collapsed",
-)
-
-if nav_action == "☕ Savings":
-    st.switch_page("pages/01_Savings.py")
-elif nav_action == "🏆 Rankings":
-    st.switch_page("pages/02_Rankings.py")
-
-# ==========================================
-# HELPER FUNCTIONS (Visualization)
-# ==========================================
-
-def create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate):
-    """Create professional visualization matching theme"""
-    # Set plot style to match theme
-    plt.rcParams.update({
-        "axes.facecolor": "#FFFFF0", # Ivory background for plot area
-        "figure.facecolor": "#FFFFFF", # White background for figure frame
-        "text.color": "black",
-        "axes.labelcolor": "black",
-        "xtick.color": "black",
-        "ytick.color": "black",
-        "axes.edgecolor": "#D4AF37", # Gold borders
-        "axes.linewidth": 1.5,
-        "grid.color": "#D4AF37",
-        "grid.alpha": 0.2
-    })
-    
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
-    
-    # Plot 1: Forecasts
-    ax1 = axes[0]
-    subset = df["Rate"].iloc[-180:]
-    ax1.plot(subset.index, subset, label="Historical", color="black", linewidth=2)
-
-    last_date = df.index[-1]
-    if ols_forecast is not None and isinstance(ols_forecast, (list, np.ndarray)) and len(ols_forecast) > 0:
-        num_f = len(ols_forecast)
-        dates_f = build_forecast_dates(last_date, num_f)
-        # Gold Trend Line
-        ax1.plot(dates_f, ols_forecast[: len(dates_f)], label="OLS Trend", linestyle="--", color="#D4AF37", linewidth=2.5, alpha=0.9) 
-    
-    if arima_forecast is not None and hasattr(arima_forecast, '__len__') and len(arima_forecast) > 0:
-        num_f = len(arima_forecast)
-        dates_f = build_forecast_dates(last_date, num_f)
-        # Red Forecast Line
-        ax1.plot(
-            dates_f,
-            arima_forecast.values[: len(dates_f)],
-            label="ARIMA Forecast",
-            linestyle="-",
-            color="#C70039",
-            linewidth=3,
-        )
-
-    ax1.axhline(y=current_rate, color="green", linestyle=":", linewidth=2, label="Current Rate", alpha=0.7)
-    
-    # Set title with gold color
-    ax1.set_title("EUR/INR Exchange Rate Forecast", fontsize=14, fontweight="bold", color="#D4AF37")
-    ax1.set_ylabel("Rate (₹ per EUR)")
-    
-    # Legend styling
-    legend = ax1.legend(loc="best", facecolor="#FFFFF0", edgecolor="#D4AF37")
-    for text in legend.get_texts():
-        text.set_color("black")
-
-    ax1.grid(True)
-    
-    # Plot 2: Moving Averages
-    ax2 = axes[1]
-    df["MA_30"] = df["Rate"].rolling(window=30).mean()
-    df["MA_90"] = df["Rate"].rolling(window=90).mean()
-    subset2 = df.iloc[-250:]
-    
-    ax2.plot(subset2.index, subset2["Rate"], label="Daily Rate", color="black", alpha=0.3)
-    ax2.plot(subset2.index, subset2["MA_30"], label="30-Day MA", color="#D4AF37", linewidth=2.5) # Gold
-    ax2.plot(subset2.index, subset2["MA_90"], label="90-Day MA", color="#800000", linewidth=2.5) # Dark Red
-    
-    ax2.set_title("Trend Analysis (Moving Averages)", fontsize=14, fontweight="bold", color="#D4AF37")
-    ax2.set_xlabel("Date")
-    ax2.set_ylabel("Rate (₹ per EUR)")
-    
-    legend2 = ax2.legend(loc="best", facecolor="#FFFFF0", edgecolor="#D4AF37")
-    for text in legend2.get_texts():
-        text.set_color("black")
-        
-    ax2.grid(True)
-    
-    plt.tight_layout()
-    return fig
-
-
-# ==========================================
-# SIDEBAR SETTINGS
-# ==========================================
-st.sidebar.header("⚙️ Settings")
-forecast_days = st.sidebar.slider("Forecast Period (Days)", 7, 90, 30)
-data_period = st.sidebar.selectbox("Historical Data Period", ["2y", "4y", "5y", "10y", "max"])
-
+st.sidebar.header("⚙️ Configuration")
+forecast_days = st.sidebar.slider("Forecast Horizon (Days)", 7, 90, 30)
+data_period = st.sidebar.selectbox("Data Lookback", ["2y", "4y", "5y", "10y", "max"])
 st.sidebar.divider()
-st.sidebar.header("ℹ️ About FilterFX")
-st.sidebar.markdown("Precision econometric tools for personal forex management.")
+st.sidebar.markdown("""
+<div style='text-align: center; color: #888;'>
+    <small>Powered by</small><br>
+    <strong style='color: #B38728;'>OLS • ARIMA • GARCH</strong>
+</div>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# MAIN APP: LOAD DATA & RUN MODELS
+# LOAD DATA (CACHED)
 # ==========================================
-with st.spinner("📥 Loading data & running models..."):
-    df = fetch_fx_data(period=data_period)
+with st.spinner("Accessing Market Data..."):
+    df = get_cached_data(data_period)
     if df.empty:
-        st.error("No data available.")
+        st.error("Market data unavailable.")
         st.stop()
     
     current_rate = df["Rate"].iloc[-1]
-
-    ols_model, ols_forecast = run_ols_model(df["Rate"], forecast_days)
-    arima_model, arima_forecast = run_arima_model(df["Rate"], forecast_days)
-    garch_model, garch_variance = run_garch_model(df["Rate"], forecast_days)
+    
+    # Run Models
+    ols_model, ols_forecast, arima_model, arima_forecast, garch_model, garch_variance = get_cached_models(df["Rate"], forecast_days)
 
 predicted_rate = 0.0
 if arima_forecast is not None and len(arima_forecast) > 0:
     predicted_rate = arima_forecast.iloc[-1]
 
 # ==========================================
-# MARKET SNAPSHOT
+# HEADER
+# ==========================================
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    st.markdown(get_logo_html(width=100), unsafe_allow_html=True)
+with col_title:
+    st.title("FilterFX Dashboard")
+    st.markdown("<p style='font-style: italic; color: #888 !important; margin-top: -15px;'>Real-time Forex Intelligence</p>", unsafe_allow_html=True)
+
+# Navigation
+nav_action = st.radio("", ["🏠 Home", "☕ Savings", "🏆 Rankings"], horizontal=True, label_visibility="collapsed")
+if nav_action == "☕ Savings": st.switch_page("pages/01_Savings.py")
+elif nav_action == "🏆 Rankings": st.switch_page("pages/02_Rankings.py")
+
+# ==========================================
+# VISUALIZATION FUNCTION (DARK MODE)
+# ==========================================
+def create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate):
+    # Dark Theme for Matplotlib
+    plt.rcParams.update({
+        "axes.facecolor": "#1E1E1E",
+        "figure.facecolor": "#121212",
+        "text.color": "#E0E0E0",
+        "axes.labelcolor": "#C0C0C0",
+        "xtick.color": "#C0C0C0",
+        "ytick.color": "#C0C0C0",
+        "axes.edgecolor": "#444",
+        "grid.color": "#444",
+        "grid.alpha": 0.3
+    })
+    
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+    
+    # Plot 1: Forecast
+    ax1 = axes[0]
+    subset = df["Rate"].iloc[-180:]
+    ax1.plot(subset.index, subset, label="Historical", color="#C0C0C0", linewidth=1.5)
+    
+    last_date = df.index[-1]
+    if len(ols_forecast) > 0:
+        dates_f = build_forecast_dates(last_date, len(ols_forecast))
+        ax1.plot(dates_f, ols_forecast, label="OLS Trend", linestyle="--", color="#B38728", linewidth=2) # Gold
+    
+    if len(arima_forecast) > 0:
+        dates_f = build_forecast_dates(last_date, len(arima_forecast))
+        ax1.plot(dates_f, arima_forecast.values, label="ARIMA Forecast", color="#00FFCC", linewidth=2.5) # Neon Teal for contrast
+
+    ax1.set_title("EUR/INR Forecast", fontsize=14, fontweight="bold", color="#B38728")
+    legend = ax1.legend(loc="upper left", facecolor="#1E1E1E", edgecolor="#B38728")
+    for text in legend.get_texts(): text.set_color("#E0E0E0")
+    ax1.grid(True)
+    
+    # Plot 2: MA
+    ax2 = axes[1]
+    df["MA_30"] = df["Rate"].rolling(window=30).mean()
+    subset2 = df.iloc[-250:]
+    ax2.plot(subset2.index, subset2["Rate"], color="#555", alpha=0.5)
+    ax2.plot(subset2.index, subset2["MA_30"], label="30-Day MA", color="#B38728", linewidth=2)
+    
+    ax2.set_title("Trend Analysis (Moving Averages)", fontsize=14, fontweight="bold", color="#B38728")
+    legend2 = ax2.legend(loc="upper left", facecolor="#1E1E1E", edgecolor="#B38728")
+    for text in legend2.get_texts(): text.set_color("#E0E0E0")
+    ax2.grid(True)
+    
+    plt.tight_layout()
+    return fig
+
+# ==========================================
+# SNAPSHOT
 # ==========================================
 st.subheader("Market Snapshot")
+m1, m2 = st.columns(2)
+with m1: st.metric("📊 Current Rate", f"₹{current_rate:.4f}")
+with m2: 
+    chg = ((df["Rate"].iloc[-1] - df["Rate"].iloc[-2])/df["Rate"].iloc[-2])*100
+    st.metric("📈 Daily Change", f"{chg:.3f}%", delta=f"{chg:.3f}%")
 
-metric_col1, metric_col2 = st.columns(2)
-with metric_col1:
-    st.metric("📊 Current Rate", f"₹{current_rate:.4f}")
-with metric_col2:
-    daily_change = ((df["Rate"].iloc[-1] - df["Rate"].iloc[-2]) / df["Rate"].iloc[-2]) * 100
-    st.metric("📈 Daily Change", f"{daily_change:.3f}%", delta=f"{daily_change:.3f}%")
-
-st.caption(f"Latest Data: {df.index[-1].date()}")
-
-# ==========================================
-# SMART CURRENCY CONVERTER
-# ==========================================
 st.divider()
+
+# ==========================================
+# CONVERTER (GOLD CARD STYLE)
+# ==========================================
 st.subheader("🔄 Smart Converter")
 
-rate_col1, rate_col2 = st.columns(2)
-
-# Using markdown containers to apply the Gold/Ivory/Black theme
-with rate_col1:
-    st.markdown(
-        f"""
-        <div style="background-color: #FFFFF0; border: 2px solid #D4AF37; padding: 15px; border-radius: 10px;">
-            <strong style="color: #000; font-weight: 700;">Current Rate</strong>
-            <h3 style="margin-top: 5px; color: #D4AF37; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">
-                ₹{current_rate:.4f}
-            </h3>
+rc1, rc2 = st.columns(2)
+with rc1:
+    st.markdown(f"""
+    <div class="gold-card">
+        <div style="color: #C0C0C0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Current Rate</div>
+        <div style="font-family: 'Playfair Display'; font-size: 32px; font-weight: bold; background: linear-gradient(45deg, #BF953F, #FCF6BA); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            ₹{current_rate:.4f}
         </div>
-        """, unsafe_allow_html=True
-    )
-
-with rate_col2:
-    diff_val = predicted_rate - current_rate
-    direction_arrow = "↗" if diff_val > 0 else "↘"
-    color_arrow = "green" if diff_val > 0 else "red"
-    st.markdown(
-        f"""
-        <div style="background-color: #FFFFF0; border: 2px solid #D4AF37; padding: 15px; border-radius: 10px;">
-            <strong style="color: #000; font-weight: 700;">Forecast (+{forecast_days}d)</strong>
-            <h3 style="margin-top: 5px; color: #D4AF37; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">
-                ₹{predicted_rate:.4f} <span style='color:{color_arrow}; font-size: 0.8em; text-shadow: none;'>{direction_arrow}</span>
-            </h3>
+    </div>""", unsafe_allow_html=True)
+with rc2:
+    diff = predicted_rate - current_rate
+    arrow = "↗" if diff > 0 else "↘"
+    col = "#00FFCC" if diff > 0 else "#FF4444"
+    st.markdown(f"""
+    <div class="gold-card">
+        <div style="color: #C0C0C0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Forecast (+{forecast_days}d)</div>
+        <div style="font-family: 'Playfair Display'; font-size: 32px; font-weight: bold; background: linear-gradient(45deg, #BF953F, #FCF6BA); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            ₹{predicted_rate:.4f} <span style='color:{col}; font-size:0.6em;'>{arrow}</span>
         </div>
-        """, unsafe_allow_html=True
-    )
+    </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
+cc1, cc2 = st.columns([1,2])
+with cc1: d = st.radio("Direction", ["EUR ➡ INR", "INR ➡ EUR"], label_visibility="collapsed")
+with cc2: amt = st.number_input("Amount", value=1000.0, step=100.0, label_visibility="collapsed")
 
-c_col1, c_col2 = st.columns([1, 2])
-with c_col1:
-    convert_direction = st.radio("Direction", ["EUR ➡ INR", "INR ➡ EUR"], label_visibility="collapsed")
-with c_col2:
-    amount_input = st.number_input("Amount", value=1000.0, step=100.0, label_visibility="collapsed")
-
-if amount_input > 0:
-    if convert_direction == "EUR ➡ INR":
-        converted_val = amount_input * current_rate
-        st.info(f"💶 **{amount_input:,.2f} EUR** = **₹ {converted_val:,.2f} INR**")
-    else:
-        converted_val = amount_input / current_rate
-        st.info(f"🇮🇳 **₹ {amount_input:,.2f} INR** = **€ {converted_val:,.2f} EUR**")
+if amt > 0:
+    val = amt * current_rate if d == "EUR ➡ INR" else amt / current_rate
+    sym_in, sym_out = ("€", "₹") if d == "EUR ➡ INR" else ("₹", "€")
+    st.success(f"**{sym_in} {amt:,.2f}** = **{sym_out} {val:,.2f}**")
 
 # ==========================================
-# TRANSACTION LOGGING
+# LOGGING
 # ==========================================
 st.divider()
 st.subheader("💾 Log Transaction")
-
-with st.expander("🗑️ Transaction Management"):
-    if st.button("Clear All Transactions", use_container_width=True):
+with st.expander("🗑️ Transaction History"):
+    if st.button("Clear Log", use_container_width=True):
         clear_transactions()
         st.rerun()
 
-tx_col_amount, tx_col_date = st.columns(2)
-with tx_col_amount:
-    amount_inr = st.number_input("Amount (INR)", min_value=0.0, step=1000.0)
-with tx_col_date:
-    tx_date = st.date_input("Date")
+tc1, tc2 = st.columns(2)
+with tc1: t_amt = st.number_input("Amount (INR)", min_value=0.0, step=1000.0)
+with tc2: t_date = st.date_input("Date")
 
-# (Logic for preview and logging remains same as before, just theme applied via CSS)
-today = dt.now().date()
-is_future = tx_date > today
-is_past = tx_date < today
-previous_rate = get_rate_for_date(df, tx_date) if is_past else None
-
-if st.button("Log Transaction", type="primary", use_container_width=True) and amount_inr > 0:
-    rate_to_use = predicted_rate if is_future else (previous_rate if is_past and previous_rate else current_rate)
-    tx_df, savings_eur = append_transaction(tx_date, amount_inr, rate_to_use)
-    st.success(f"Transaction Logged at rate: {rate_to_use:.4f}")
-
-st.divider()
+if st.button("Confirm Log Entry", type="primary", use_container_width=True) and t_amt > 0:
+    today = dt.now().date()
+    r_use = predicted_rate if t_date > today else (get_rate_for_date(df, t_date) or current_rate)
+    append_transaction(t_date, t_amt, r_use)
+    st.success(f"Logged successfully @ {r_use:.4f}")
 
 # ==========================================
-# ANALYSIS RESULTS
+# RESULTS SECTION
 # ==========================================
-st.header("📊 Analysis Results")
+st.divider()
+st.header("📊 Model Analysis")
 
-if ols_model and hasattr(ols_model, 'params'):
-    ols_dir = "UP ↗" if ols_model.params[1] > 0 else "DOWN ↘"
-    ols_str = f"{ols_model.rsquared * 100:.1f}%"
-else:
-    ols_dir, ols_str = "NEUTRAL ↔", "0.0%"
+if hasattr(ols_model, 'params'):
+    odir = "UP ↗" if ols_model.params[1] > 0 else "DOWN ↘"
+    ostr = f"{ols_model.rsquared*100:.1f}%"
+else: odir, ostr = "NEUTRAL ↔", "0%"
 
-ols_col, arima_col = st.columns(2)
-with ols_col:
-    st.markdown(f"**OLS Trend:** {ols_dir} (Conf: {ols_str})")
-with arima_col:
-    if arima_forecast is not None:
-        chg = ((predicted_rate - current_rate) / current_rate) * 100
-        st.metric(f"ARIMA Forecast ({forecast_days}D)", f"₹{predicted_rate:.4f}", delta=f"{chg:.2f}%")
+ac1, ac2 = st.columns(2)
+with ac1: st.markdown(f"**OLS Trend:** {odir} <span style='color:#888'>(Conf: {ostr})</span>", unsafe_allow_html=True)
+with ac2: 
+    pchg = ((predicted_rate-current_rate)/current_rate)*100
+    st.metric(f"Forecast ({forecast_days}D)", f"₹{predicted_rate:.4f}", delta=f"{pchg:.2f}%")
 
-# GARCH
-st.subheader("⚠️ Risk (GARCH)")
-risk_label, risk_desc, avg_vol = classify_risk_from_variance(garch_variance)
-st.markdown(
-    f"""
-    <div style="background-color: #FFFFF0; border-left: 5px solid #D4AF37; padding: 15px;">
-        <strong style="font-size: 1.2em;">Risk Level: {risk_label}</strong><br>
-        Volatility Index: {avg_vol:.2f}<br>
-        <em>{risk_desc}</em>
-    </div>
-    """, unsafe_allow_html=True
-)
+# GARCH Risk
+st.subheader("⚠️ Volatility Radar")
+rlab, rdesc, avol = classify_risk_from_variance(garch_variance)
+st.markdown(f"""
+<div style="background-color: #1E1E1E; border-left: 4px solid #B38728; padding: 15px; border-radius: 4px;">
+    <strong style="color: #FCF6BA; font-size: 1.1em;">Risk Level: {rlab}</strong> 
+    <span style="color: #888;">(Vol Index: {avol:.2f})</span><br>
+    <em style="color: #C0C0C0;">{rdesc}</em>
+</div>""", unsafe_allow_html=True)
 
 st.divider()
-
-# Visualization
-st.subheader("📉 Forecast Visualization")
-fig = create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate)
-st.pyplot(fig)
-
-st.divider()
-st.caption("FilterFX - Precision Econometrics")
+st.subheader("📉 Technical Chart")
+st.pyplot(create_visualization(df, forecast_days, ols_forecast, arima_forecast, current_rate))
+st.caption("FilterFX • Precision Econometrics")
