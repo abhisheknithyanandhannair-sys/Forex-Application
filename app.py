@@ -41,23 +41,54 @@ st.set_page_config(
 st.title("💱 EUR/INR Exchange Rate Prediction")
 st.caption("Real-time forex analysis with econometric models – tuned for mobile screens.")
 
-# ==========================================
-# NAVIGATION BUTTONS
-# ==========================================
-nav_col1, nav_col2, nav_col3 = st.columns(3)
+st.markdown(
+    """
+    <style>
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #0e1117;
+        border-top: 1px solid #262730;
+        padding: 0.5rem 0.75rem;
+        display: flex;
+        justify-content: space-around;
+        z-index: 9999;
+    }
 
-with nav_col1:
-    st.button("🏠 Home", use_container_width=True, disabled=True)
+    .bottom-nav button {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
 
-with nav_col2:
-    if st.button("☕ Savings", use_container_width=True, key="nav_to_savings"):
-        st.switch_page("pages/01_Savings.py")
+    .bottom-nav button:hover {
+        color: #00ffcc;
+    }
 
-with nav_col3:
-    if st.button("🏆 Rankings", use_container_width=True, key="nav_to_rankings"):
-        st.switch_page("pages/02_Rankings.py")
+    /* Prevent content from hiding behind navbar */
+    .block-container {
+        padding-bottom: 5rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+nav_action = st.radio(
+    "",
+    ["🏠 Home", "☕ Savings", "🏆 Rankings"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
-st.divider()
+if nav_action == "☕ Savings":
+    st.switch_page("pages/01_Savings.py")
+
+elif nav_action == "🏆 Rankings":
+    st.switch_page("pages/02_Rankings.py")
 
 # ==========================================
 # HELPER FUNCTIONS (Visualization)
